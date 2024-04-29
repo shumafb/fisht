@@ -1,0 +1,4 @@
+imei_checker.py
+
+{'status': 'succes', 'result': 'IMEI: 352045137671862<br>Brand: Apple<br>Model: iPhone 12 (A2403)<br>Model Name: iPhone 12<br>', 'imei': '352045137671862', 'count_free_checks_today': 950923, 'readPerformance': '0.0002 seconds', 'object': {'brand': 'Apple', 'name': 'iPhone 12', 'model': 'iPhone 12 (A2403)'}}
+
