@@ -7,10 +7,21 @@ def check_imei(imei: int) -> dict:
     Возвращает массив значений
     """
     response = requests.get(f"https://alpha.imeicheck.com/api/modelBrandName?imei={imei}&format=json")
+
+    model_dict = dict()
+
     if response.status_code == 200:
         if response.json()["status"] == "succes":
-            return response.json()
+            response = response.json()
+            img_path = f"https://fdn2.gsmarena.com/vv/bigpic/{response['object']["brand"].lower()}-{response['object']["name"].replace(" ", "-").lower()}.jpg"
+            if requests.get(img_path).status_code == 200:
+                response["object"]["image"] = img_path
+            else:
+                response["object"]["image"] = None
+            return response
         else:
             return None
     else:
         return None
+
+print(check_imei(352045137671862))

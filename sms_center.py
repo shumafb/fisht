@@ -4,7 +4,6 @@ import string
 import os
 
 
-
 def send_sms(phone: int, modem_id=1, send_mode=True) -> str:
     """
     Создает файл для последующей отправки sms server tools

@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
-from bs_yandex_locator import push_yalocator_api
+import random
+import string
 
 operators = {1: "red", 2: "green", 20: "black", 99: "yellow"}
 
@@ -22,14 +23,5 @@ def bs_html_constructor(bs_list: list) -> str:
     basestation_list += "        ]\n"
     body.string = basestation_list + body.string
 
-
-    with open("source/test.html", "w", encoding="utf-8") as f:
+    with open("source/bs_maps/map.html", "w", encoding="utf-8") as f:
         f.write(str(soup))
-
-
-
-x = list()
-x.append(push_yalocator_api(2, 10106, 1294881))
-x.append(push_yalocator_api(1, 10141, 59764))
-
-bs_html_constructor(x)
