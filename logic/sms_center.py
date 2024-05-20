@@ -1,0 +1,113 @@
+"""Модудь для работы с sms"""
+
+import os
+import os.path
+import random
+import string
+from .smsc_api import SMSC
+
+
+def send_sms(phone: int, modem_id=1, send_mode=True) -> str:
+    """
+    Создает файл для последующей отправки sms server tools
+    phone - номер телефона
+    modem_id - номер модема, с которого осуществляется отправка
+    send_mode - True для российских номеров,
+                False - строгий режим для ин. номеров
+    Возвращает название созданного файла
+    """
+    path_file = f"sms/outgoing/{modem_id}/{phone}-{''.join(random.choice(string.digits + string.ascii_lowercase + string.ascii_uppercase) for x in range(6))}.txt"
+    with open(path_file, "w", encoding="utf-8") as file:
+        x = f"To: {phone}\n"
+        x += "Report: yes\n"
+        x += "Ping: yes\n\n"
+        file.write(x)
+    return {"path_file": path_file[path_file.find("/outgoing/") + 12 :]}
+
+
+def check_sent_failed(path_file: str) -> dict:
+    """
+    Проверка на наличие файла отправки в папках sent и failed
+    Если есть в failed -> ошибка в отправки с нашей стороны
+    Если есть в sent -> отправлено
+    """
+    try:
+        if os.path.isfile(f"sms/sent/{path_file}"):
+            return {"status": "Send", "info": None, "path_file": f"sms/sent/{path_file}"}
+        elif os.path.isfile(f"sms/failed/{path_file}"):
+            return {"status": "Local_Failed", "info": None, "path_file": f"sms/failed/{path_file}"}
+    except FileNotFoundError:
+        pass
+    else:
+        return {"status": "None", "info": None, "path_file": None}
+
+
+def get_message_id(path_file: str) -> dict:
+    """
+    Возвращает message_id файла в папке sent и id модема
+    path_file - название отчета о запросе отпраки смс
+    """
+    try:
+        with open(f"sms/sent/{path_file}", "r", encoding="utf-8") as file:
+            lines = file.readlines()
+            for line in lines:
+                modem_id = line.split()[1] if "Modem" in line else None
+                message_id = line.split()[1] if "Message_id" in line else None
+            return {"message_id": message_id, "modem_id": modem_id}
+    except FileNotFoundError:
+        return {"message_id": None, "modem_id": None}
+
+
+def check_report(message_id: int, modem_id: int) -> dict:
+    """
+    Проверка статуса о доставке смс в папке report
+    message_id - id статуса об отправке
+    modem_id - id модема
+    Возвращает словарь с данными отчета
+    """
+    for filename in os.listdir("sms/report"):
+        if filename.startswith(f"GSM{modem_id}"):
+            with open(f"sms/report/{filename}", "r", encoding="utf-8") as f:
+                info = {}
+                for line in f.readlines():
+                    if len(line.strip().split(": ")[1:]) > 0:
+                        info[line.strip().split(": ")[0]] = line.strip("\n").split(": ")[1:][0]
+                        # Поиск и сравнение заданного message_id и message_id файла
+                if str(message_id) == info["Message_id"]:
+                    return {
+                        "status": "Report",
+                        "info": info,
+                        "path_file": f"sms/report/{filename}",
+                    }
+
+
+def give_report_content(path_file: str) -> str:
+    """
+    Принимает путь к файлу
+    Возвращает содержимое файла
+    """
+    with open(path_file, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+# Функционал SMSC
+
+smsc = SMSC()
+
+
+def get_balance():
+    """Запрос баланса в ЛК SMSC"""
+    return smsc.get_balance()
+
+
+def send_sms_smsc(phone: str) -> int:
+    """Отправка ping через сервис SMSC"""
+    ping = smsc.send_sms(f"7{phone}", "", format=6)
+    print(ping, "send_ping")
+    smsc_id = ping[0]
+    return int(smsc_id)
+
+
+def update_status(smsc_id, phone):
+    """Запрос отчета о доставке ping"""
+    return smsc.get_status(id=smsc_id, phone=f"7{phone},", all=1)

@@ -23,5 +23,5 @@ def check_imei(imei: int) -> dict:
             return None
     else:
         return None
-
-print(check_imei(352045137671862))
+    
+print(check_imei(356645114692355))

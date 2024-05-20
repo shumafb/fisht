@@ -1,4 +1,4 @@
-def luhn(imei_info):
+def luhn(imei_info) -> int:
     """
     Принимает 14 цифр IMEI-номера
     Вычислает контрольную 15 цифру

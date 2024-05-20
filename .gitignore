@@ -5,3 +5,5 @@
 /sms
 /ground
 logs
+.coverage
+htmlcov
