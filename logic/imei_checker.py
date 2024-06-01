@@ -1,5 +1,8 @@
 import requests
+import pandas as pd
 
+# df = pd.read_csv("source/taCList.csv", header=0)
+# print(df)
 
 def check_imei(imei: int) -> dict:
     """
@@ -24,4 +27,15 @@ def check_imei(imei: int) -> dict:
     else:
         return None
     
-print(check_imei(356645114692355))
+
+def check_tac(tac: int) -> dict[str, str]:
+    """Принимает tac и выдает модель устройства
+
+    Args:
+        tac (int): _description_
+
+    Returns:
+        dict: _description_
+    """
+    tac
+

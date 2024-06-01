@@ -7,5 +7,6 @@
     "python.analysis.extraPaths": [
         "./bot/keyboards",
         "./logic"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "off"
 }

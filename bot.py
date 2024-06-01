@@ -6,7 +6,6 @@ import json
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.state import StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 import shell
 
@@ -20,9 +19,11 @@ logging.basicConfig(
     level=logging.INFO,
     filename="logs/aiogram.log",
     filemode="w",
+    format=f"%(asctime)s %(levelname)s %(message)s"
 )
 logging.info("An Info")
-logging.error("An error")
+logging.error("An Error")
+logging.critical("An CRITICAL")
 
 
 # Запуск бота
