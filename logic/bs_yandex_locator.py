@@ -43,12 +43,12 @@ def push_yalocator_api(mnc, lac, cid):
 
     data = f'json={{"common": {{"version": "1.0", "api_key": "{YANDEX_LOCATOR_TOKEN}"}}, "gsm_cells": [ {{ "countrycode": 250, "operatorid": {mnc}, "cellid": {cid}, "lac": {lac}, "signal_strength": -80, "age": 1000}} ]}}'
 
-    if len(str(cid)) == 5:
-        cid = get_longcid(mnc, cid)
+    # if len(str(cid)) == 5:
+    #     cid = get_longcid(mnc, cid)
 
     response = requests.post(url=URL, data=data)
 
-    if response.status_code == 200:
+    if response.status_code == 200 and response.json()["position"]["latitude"] != 44.60668182373047:
         return {"mnc": mnc, "lac": lac, "cid": cid, "locator": response.json()}
     else:
         return None

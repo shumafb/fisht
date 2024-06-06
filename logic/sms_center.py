@@ -22,6 +22,7 @@ def send_sms(phone: int, modem_id=1, send_mode=True) -> str:
         x += "Report: yes\n"
         x += "Ping: yes\n\n"
         file.write(x)
+    print(path_file[path_file.find("/outgoing/") + 12 :])
     return {"path_file": path_file[path_file.find("/outgoing/") + 12 :]}
 
 
@@ -34,7 +35,7 @@ def check_sent_failed(path_file: str) -> dict:
     try:
         if os.path.isfile(f"sms/sent/{path_file}"):
             return {"status": "Send", "info": None, "path_file": f"sms/sent/{path_file}"}
-        elif os.path.isfile(f"sms/failed/{path_file}"):
+        if os.path.isfile(f"sms/failed/{path_file}"):
             return {"status": "Local_Failed", "info": None, "path_file": f"sms/failed/{path_file}"}
     except FileNotFoundError:
         pass

@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import time
 
 # df = pd.read_csv("source/taCList.csv", header=0)
 # print(df)
@@ -28,14 +29,15 @@ def check_imei(imei: int) -> dict:
         return None
     
 
-def check_tac(tac: int) -> dict[str, str]:
-    """Принимает tac и выдает модель устройства
+def check_taclist(tac_code: int):
+    """Возвращает модель телефона по tac-номеру
 
     Args:
-        tac (int): _description_
-
-    Returns:
-        dict: _description_
+        tac_code (_type_): tac-номер (часть IMEI)
     """
-    tac
-
+    df = pd.read_csv("source/taclist.csv", sep=";")
+    result = df.loc[df['tac'] == tac_code, 'model']
+    if not result.empty:
+        return result.values[0]
+    else:
+        return None

@@ -5,7 +5,7 @@ import json
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, URLInputFile
+from aiogram.types import Message, CallbackQuery, URLInputFile, FSInputFile
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
@@ -15,7 +15,10 @@ from logic.ph_check import numvox, get_smsbox, get_kodysu
 from logic.sms_center import send_sms, send_sms_smsc, check_report, check_sent_failed, get_message_id
 import logic.sms_center as sms_center
 from logic.imei_luhn_alg import luhn
-from logic.imei_checker import check_imei
+from logic.imei_checker import check_imei, check_taclist
+from logic.bs_html_constructor import bs_html_constructor
+from logic.bs_yandex_locator import push_yalocator_api, get_longcid
+from logic.bs_html_preview import get_preview
 
 router = Router() # [1]
 
@@ -30,18 +33,52 @@ class BotStatesStorage(StatesGroup):
     list_phone = State() # Состояние списка номеров
 
 
+@router.message(F.text.regexp(r"^(1|2|20|99) (\d{1,8}) (\d+)"))
+async def api_locator(message: Message):
+    bslist = message.text.split("\n")
+    yalocator_list = []
+    text = "📡\n├ Статус:\n"
+    for bs in bslist:
+        mnc = bs.split(" ")[0]
+        lac = bs.split(" ")[1]
+        cid = bs.split(" ")[2]
+        # if len(bs.split(" ")[2]) == 5:
+        #     cid = get_longcid(mnc, cid)
+        # if cid is None:
+        #     continue
+        yalocator_card = push_yalocator_api(mnc=mnc, lac=lac, cid=cid)
+        print(yalocator_card)
+        if yalocator_card is not None:
+            yalocator_list.append(yalocator_card)
+            text += f"├ {lac}/{cid} ✅\n"
+        else:
+            text += f"├ {lac}/{cid} ❌\n"
+    text += f"└Всего: {len(yalocator_list)}"
+    bs_html_constructor(yalocator_list)
+    await get_preview()
+    await message.answer_photo(photo=FSInputFile("source/screen.png"))
+    await message.answer(text=text)
+    await message.answer_document(document=FSInputFile("source/bs_maps/map.html", filename="map.html"))
+
+
 @router.message(F.text.regexp(r"^\d{14,15}$"))
 async def imei_menu(message: Message):
     imei = message.text.strip()
     imei = luhn(imei[:14])
+    tac = int(str(imei)[:8])
     imei_info = check_imei(imei=imei)
-    imei_device = f"{imei_info["object"]["brand"]} {imei_info["object"]["name"]}"
-
-    if imei_info["object"]["image"] is not None:
-        image = URLInputFile(imei_info["object"]["image"])
-        await message.answer_photo(image)
+    tac_info = check_taclist(tac_code=tac)
+    info = ""
+    if imei_info is not None:
+        imei_device = f"{imei_info["object"]["brand"]} {imei_info["object"]["name"]}"
+        if imei_info["object"]["image"] is not None:
+            image = URLInputFile(imei_info["object"]["image"])
+            await message.answer_photo(image)
+        info += f"🆔\n*├IMEI*: {imei}\n└Модель: {imei_device}\n"
+    if tac_info is not None:
+        info += f"\n🆑\n*├TAC*: {tac}\n└Модель: {tac_info}"
     await message.answer(
-        text=f"🆔\n*├IMEI*: {imei}\n└Модель: {imei_device}",
+        text=info,
         reply_markup=kb.imei_keyboard(imei_device=imei_device, imei=imei))
 
 
@@ -122,9 +159,9 @@ async def send_modem_ping(callback: CallbackQuery, state: FSMContext):
     phone = phone["phone"]
     sending_info = await loop.run_in_executor(None, sms_center.send_sms, phone)
     await callback.answer("❗Запрос на ping отправлен, ожидайте")
-    await asyncio.sleep(5)
+    await asyncio.sleep(10)
     try:
-        await sending_info.update(await loop.run_in_executor(None, sms_center.get_message_id, sending_info["path_file"]))
+        await sending_info.update(await loop.run_in_executor(None, sms_center.check_sent_failed, sending_info["path_file"]))
     except TypeError:
         await callback.answer("‼ Продолжается попытка, ожидайте")
         try:
