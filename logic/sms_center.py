@@ -22,7 +22,6 @@ def send_sms(phone: int, modem_id=1, send_mode=True) -> str:
         x += "Report: yes\n"
         x += "Ping: yes\n\n"
         file.write(x)
-    print(path_file[path_file.find("/outgoing/") + 12 :])
     return {"path_file": path_file[path_file.find("/outgoing/") + 12 :]}
 
 
@@ -33,10 +32,21 @@ def check_sent_failed(path_file: str) -> dict:
     Если есть в sent -> отправлено
     """
     try:
+        info = {}
         if os.path.isfile(f"sms/sent/{path_file}"):
-            return {"status": "Send", "info": None, "path_file": f"sms/sent/{path_file}"}
+            with open(f"sms/sent/{path_file}", "r", encoding="utf-8") as file:
+                lines = file.readlines()
+                for line in lines:
+                    if len(line.split(":", 1)) > 1:
+                        info[line.strip("\n").split(":", 1)[0]] = line.strip("\n").split(":", 1)[1].strip()
+            return {"status": "Send", "info": info, "path_file": f"sms/sent/{path_file}"}
         if os.path.isfile(f"sms/failed/{path_file}"):
-            return {"status": "Local_Failed", "info": None, "path_file": f"sms/failed/{path_file}"}
+            with open(f"sms/failed/{path_file}", "r", encoding="utf-8") as file:
+                lines = file.readlines()
+                for line in lines:
+                    if len(line.split(":", 1)) > 1:
+                        info[line.strip("\n").split(":", 1)[0]] = line.strip("\n").split(":", 1)[1].strip()
+            return {"status": "Local_Failed", "info": info, "path_file": f"sms/failed/{path_file}"}
     except FileNotFoundError:
         pass
     else:
@@ -52,14 +62,16 @@ def get_message_id(path_file: str) -> dict:
         with open(f"sms/sent/{path_file}", "r", encoding="utf-8") as file:
             lines = file.readlines()
             for line in lines:
-                modem_id = line.split()[1] if "Modem" in line else None
-                message_id = line.split()[1] if "Message_id" in line else None
-            return {"message_id": message_id, "modem_id": modem_id}
+                if "Message_id" in line:
+                    message_id = line.strip("\n").split(":", 1)[1].strip()
+                if "Modem" in line:
+                    modem_id = line.strip("\n").split(":", 1)[1].strip()[-1:]
+            return [message_id, modem_id]
     except FileNotFoundError:
-        return {"message_id": None, "modem_id": None}
+        return None
 
 
-def check_report(message_id: int, modem_id: int) -> dict:
+def check_report(message_id: str, modem_id: str) -> dict:
     """
     Проверка статуса о доставке смс в папке report
     message_id - id статуса об отправке
@@ -104,7 +116,6 @@ def get_balance():
 def send_sms_smsc(phone: str) -> int:
     """Отправка ping через сервис SMSC"""
     ping = smsc.send_sms(f"7{phone}", "", format=6)
-    print(ping, "send_ping")
     smsc_id = ping[0]
     return int(smsc_id)
 

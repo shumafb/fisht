@@ -9,10 +9,13 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 import shell
 
-# Доступ к Ключу Телеграм
+# Доступ к ключу Телеграм
 with open("source/keys.json", "r", encoding="utf-8") as f:
     TELEGRAM_TOKEN = json.load(f)["telegram_token"]
 
+# Доступ к списку пользователей
+with open("source/members.json", "r", encoding="utf-8") as f:
+    USERS_IDS = json.load(f)["users"]
 
 # Логирование бота
 logging.basicConfig(

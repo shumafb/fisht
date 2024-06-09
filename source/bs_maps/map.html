@@ -21,8 +21,7 @@
 <link href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css" rel="stylesheet"/>
 <script id="locator">        var map = L.map('map');
         var coords = [
-            [45.028255, 39.098289, '2523-59330311', 'yellow'],
-            [45.028205, 39.097064, '2523-60175335', 'yellow'],
+            [45.028221, 39.098217, '2523-59330311', 'yellow'],
         ]
 
         // Вычисление средней точки
@@ -55,7 +54,7 @@
         var bounds = L.latLngBounds(coords.map(coord => L.latLng(coord[0], coord[1])));
 
         // Вычисление оптимального масштаба
-        var maxZoom = 13;
+        var maxZoom = 14;
         var zoom = map.getBoundsZoom(bounds, false);
         if (zoom > maxZoom) {
             zoom = maxZoom;

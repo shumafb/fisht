@@ -11,5 +11,3 @@ async def get_preview():
         await page.screenshot(path='source/screen.png')
         await page.close()
         await browser.close()
-
-asyncio.run(get_preview())
