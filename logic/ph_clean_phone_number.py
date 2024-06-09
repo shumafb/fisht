@@ -2,7 +2,6 @@
 
 import re
 
-
 def clean_phone_number(phone_number: str) -> int:
     """Удаляет все ненужные символы из телефонного номера и возвращает только цифры."""
     if re.match(

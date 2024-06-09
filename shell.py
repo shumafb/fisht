@@ -8,9 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, FSInputFile, Message, URLInputFile
 
-
-from bot import USERS_IDS
-import logic.sms_center as sms_center
+from bot import USERS_IDS, WAIT_TIME
 from botcf.keyboards import kb
 from logic.bs_html_constructor import bs_html_constructor
 from logic.bs_html_preview import get_preview
@@ -19,23 +17,39 @@ from logic.imei_checker import check_imei, check_taclist
 from logic.imei_luhn_alg import luhn
 from logic.ph_check import get_kodysu, get_smsbox, numvox
 from logic.ph_clean_phone_number import clean_phone_number
-from logic.sms_center import (check_sent_failed, get_message_id,
-                              send_sms, send_sms_smsc)
+from logic.sms_center import (check_report, check_sent_failed, get_balance,
+                              get_message_id, send_sms, send_sms_smsc, give_report_content)
+from logic.smsc_api import SMSC_LOGIN
 
 router = Router() # [1]
 
-
-
-operator_color = {"мтс": "🔴", "мегафон": "🟢", "билайн": "🟡", "теле2": "⚫", "йота": "🔵"}
-ping_sender = {"модем": send_sms, "смсц": send_sms_smsc}
-ping_status = {"Send": "🟡 Отправлено", "Local_Failed": "⭕ Локальная ошибка", "Report": "🟢 Доставлено", "Failed": "🔴 Ошибка", "Undefined": "⚠ Неопределенно"}
+operator_color = {
+                "мтс": "🔴", 
+                "мегафон": "🟢", 
+                "билайн": "🟡", 
+                "теле2": "⚫", 
+                "йота": "🔵"
+                }
+ping_sender = {
+                "модем": send_sms,
+                "смсц": send_sms_smsc
+                }
+ping_status = {
+                "Send": "🟡 Отправлено оператору",
+                "Local_Failed": "⭕ Локальная ошибка",
+                "Report": "🟢 Доставлено",
+                "Failed": "🔴 Ошибка",
+                "Undefined": "☢ Не доставлено",
+                "Server_short": "⚪ Отпр на сервер",
+                "Send_short": "🟡 Отпр оператору",
+               }
 
 
 class BotStatesStorage(StatesGroup):
     """Машина состояний бота"""
     list_phone = State() # Состояние списка номеров
 
-
+# БАЗОВЫЕ СТАНЦИИ
 @router.message(F.text.regexp(r"^(1|2|20|99) (\d{1,8}) (\d+)"))
 async def api_locator(message: Message):
     """Работа с базовыми станциями, возвращает превью, html-файл, статус ответов по API
@@ -69,7 +83,7 @@ async def api_locator(message: Message):
             document=FSInputFile("source/bs_maps/map.html",
             filename="map.html"))
 
-
+# IMEI
 @router.message(F.text.regexp(r"^\d{14,15}$"))
 async def imei_menu(message: Message):
     """Работа с imei-номерами, возвращает превью модели и модель телефона
@@ -95,8 +109,7 @@ async def imei_menu(message: Message):
         text=info,
         reply_markup=kb.imei_keyboard(imei_device=imei_device, imei=imei))
 
-
-# @router.message(F.text.regexp(r"^(\+7|7|8|)?\d{10}"))
+# АБОНЕНТСКИЙ НОМЕР
 @router.message(F.text.regexp(r"(?:([+]\d{1,4})[-.\s]?)?(?:[(](\d{1,3})[)][-.\s]?)?(\d{1,4})[-.\s]?(\d{1,4})[-.\s]?(\d{1,9})"))
 async def phone_menu(message: Message, state: FSMContext):
     """Работа с номером телефона России
@@ -114,22 +127,42 @@ async def phone_menu(message: Message, state: FSMContext):
         sms_server = message.text.split(" ")[1]
         phone = clean_phone_number(message.text.strip())
         numvox_data = numvox(phone10=phone)
-        if sms_server in ["смсц", "smsc", "s", "c", "смс", "sms"]:
-            smsc_id = await loop.run_in_executor(None, sms_center.send_sms_smsc, phone)
-            await message.answer(text=f"📫 *SMSC*\n└Номер:{phone}",
-                                 reply_markup=kb.update_status_smsc(),
-                                 )
-            await state.update_data(smsc_info=smsc_id)
+        if sms_server in ["смсц", "smsc", "s", "c", "смс", "sms"]:            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, send_sms_smsc, phone)
+            await state.update_data(sms_id=result)
+            await message.answer(
+                f"📫 SMSC\n├*Номер*: {phone}\n└Статус: ⚪ Отправлено на сервер",
+            )
+
         elif sms_server in ["модем", "м", "modem", "m", "можем"]:
             modem_id = 2 if numvox_data["operator"].lower() in ["билайн", "beeline", "вымпелком"] else 1
-            sending_info = await loop.run_in_executor(None, sms_center.send_sms, phone, modem_id)
-            await message.answer(text=f"📮 *Модем*\n└Номер:{phone}",
-                                reply_markup=kb.update_status_modem(),
-                                )
-            await state.update_data(modem_info=sending_info)
+            sending_info = await loop.run_in_executor(None, send_sms, phone, modem_id)
+            await message.answer(
+                f"📮 Модем\n├*Номер*: {phone}\n└Статус: ⚪ Отправлено на сервер",
+            )
+            try:
+                await asyncio.sleep(WAIT_TIME)
+                sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
+                await state.update_data(sending_info=sending_info)
+                await message.answer(
+                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n└Статус: {ping_status[sending_info["status"]]}",
+                    reply_markup=kb.update_status_modem(),
+                    parse_mode="HTML"
+                )
+            except (TypeError, KeyError):
+                if sending_info["info"] is not None:
+                    await message.answer(
+                        text=f"📮 Модем\n<b>├Номер</b>: {sending_info["info"]["To"]}\n├Время ошибки: {sending_info['info']["Failed"]}\n├Причина: {sending_info["info"]["Fail_reason"]}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
+                        parse_mode="HTML")
+                else:
+                    await message.answer(
+                        text=f"📮 Модем\n<b>├Номер</b>: {phone}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
+                        parse_mode="HTML")
     elif len(phone) in [10, 11] and phone.isdigit():
         numvox_data = numvox(phone10=phone)
         smsbox_data = get_smsbox(phone=phone)
+        await state.update_data(numvox_data=numvox_data)
         if numvox_data is not None:
             color_operator = operator_color[numvox_data["operator"].lower()] if numvox_data["operator"].lower() in operator_color else "⚪"
             try:
@@ -179,34 +212,30 @@ async def phone_menu(message: Message, state: FSMContext):
     else:
         await message.answer("Некорректная команда2")
 
-# Пинг через кнопку
+# ПИНГ ЧЕРЕЗ КНОПКУ
 @router.callback_query(F.data.startswith("ping"))
 async def send_modem_ping(callback: CallbackQuery, state: FSMContext):
-    """_summary_
-
-    Args:
-        callback (CallbackQuery): _description_
-        state (FSMContext): _description_
-
-    Returns:
-        _type_: _description_
+    """Отправка Ping смс через инлайн кнопку
     """
     if callback.from_user.id not in USERS_IDS:
         return callback.answer("Нет доступа")
     
     action = callback.data.split("_")[1]
     if action.lower() == "modem":
+        numvox_data = await state.get_data()
+        numvox_data = numvox_data["numvox_data"]
+        modem_id = 2 if numvox_data["operator"].lower() in ["билайн", "beeline", "вымпелком"] else 1
         loop = asyncio.get_event_loop()
         phone = await state.get_data()
         phone = phone["phone"]
-        sending_info = await loop.run_in_executor(None, sms_center.send_sms, phone)
+        sending_info = await loop.run_in_executor(None, send_sms, phone, modem_id)
         await callback.answer("❗Запрос на ping отправлен, ожидайте")
         await callback.message.answer(
-            f"📮 Модем\n├*Номер*: {phone}\n└Статус: ⚪ Отправлен на СМС сервер",
+            f"📮 Модем\n├*Номер*: {phone}\n└Статус: ⚪ Отправлено на сервер",
         )
         try:
-            await asyncio.sleep(5)
-            sending_info.update(await loop.run_in_executor(None, sms_center.check_sent_failed, sending_info["path_file"]))
+            await asyncio.sleep(WAIT_TIME)
+            sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
             await state.update_data(sending_info=sending_info)
             await callback.message.answer(
                 text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n└Статус: {ping_status[sending_info["status"]]}",
@@ -214,18 +243,59 @@ async def send_modem_ping(callback: CallbackQuery, state: FSMContext):
                 parse_mode="HTML"
             )
         except (TypeError, KeyError):
-            await callback.message.answer(
-                text=f"📮 Модем\n<b>├Номер</b>: {sending_info["info"]["To"]}\n├Время ошибки: {sending_info['info']["Failed"]}\n├Причина: {sending_info["info"]["Fail_reason"]}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
-                parse_mode="HTML")
+            if sending_info["info"] is not None:
+                await callback.message.answer(
+                    text=f"📮 Модем\n<b>├Номер</b>: {sending_info["info"]["To"]}\n├Время ошибки: {sending_info['info']["Failed"]}\n├Причина: {sending_info["info"]["Fail_reason"]}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
+                    parse_mode="HTML")
+            else:
+                await callback.message.answer(
+                    text=f"📮 Модем\n<b>├Номер</b>: {phone}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
+                    parse_mode="HTML")
     elif action.lower() == "smsc":
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, send_sms_smsc, phone)
         await state.update_data(sms_id=result)
         await callback.message.answer(
-            f"📫 SMSC\n├*Номер*: {phone}\n└Статус: ⚪ Отправлен на СМС сервер",
+            f"📫 SMSC\n├*Номер*: {phone}\n└Статус: ⚪ Отправлено на сервер",
         )
 
-@router.callback_query(F.data == "update_status_ping")
+# ЖЕСТКИЙ ПИНГ ЧЕРЕЗ КНОПКУ
+@router.callback_query(F.data.startswith("forced_ping_modem__"))
+async def forced_send_modem_ping(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in USERS_IDS:
+        return callback.answer("Нет доступа")
+    
+    loop = asyncio.get_event_loop()
+    modem_id = callback.data.split("__")[1]
+    phone = await state.get_data()
+    phone = phone["phone"]
+    sending_info = await loop.run_in_executor(None, send_sms, phone, modem_id)
+
+    await callback.answer("❗Запрос на ping отправлен, ожидайте")
+    await callback.message.answer(
+        f"📮 Модем\n├*Номер*: {phone}\n└Статус: ⚪ Отправлено на сервер",
+        )
+    try:
+        await asyncio.sleep(WAIT_TIME)
+        sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
+        await state.update_data(sending_info=sending_info)
+        await callback.message.answer(
+            text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n└Статус: {ping_status[sending_info["status"]]}",
+            reply_markup=kb.update_status_modem(),
+            parse_mode="HTML"
+        )
+    except (TypeError, KeyError):
+        if sending_info["info"] is not None:
+            await callback.message.answer(
+                text=f"📮 Модем\n<b>├Номер</b>: {sending_info["info"]["To"]}\n├Время ошибки: {sending_info['info']["Failed"]}\n├Причина: {sending_info["info"]["Fail_reason"]}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
+                parse_mode="HTML")
+        else:
+            await callback.message.answer(
+                text=f"📮 Модем\n<b>├Номер</b>: {phone}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
+                parse_mode="HTML")
+
+# ОБНОВЛЕНИЕ СТАТУСА ПИНГ (ОБЩИЙ)
+@router.callback_query(F.data.startswith("update_status_ping_alone"))
 async def update_modem(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in USERS_IDS:
         return callback.answer("Нет доступа")
@@ -240,16 +310,24 @@ async def update_modem(callback: CallbackQuery, state: FSMContext):
 
     message_id = sending_info["info"]["Message_id"]
     modem_id = sending_info["info"]["Modem"][-1:]
-    print(message_id, modem_id)
 
     if action == "modem" and amount == "alone":
         try:
-            sending_info.update(loop.run_in_executor(None, sms_center.check_report, message_id, modem_id))
-            print(sending_info)
-            await callback.message.answer(
-                text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n\├Вернулся: {sending_info["info"]["Received"]}\n└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1) == "0" else ping_status["Undefined"]}",
-                parse_mode="HTML"
-            )
+            sending_info.update(await loop.run_in_executor(None, check_report, message_id, modem_id))
+            if sending_info["info"]["Status"].split(",", 1)[0] == "0":
+                await callback.message.answer(
+                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["From"]}\n├Отправлен: {sending_info["info"]['Sent']}\n├Вернулся: {sending_info["info"]["Received"]}\n└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1)[0] == "0" else ping_status["Undefined"]}",
+                    parse_mode="HTML"
+                )
+            else:
+                await callback.message.answer(
+                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["From"]}\n" +\
+                    f"├Отправлен: {sending_info["info"]['Sent']}\n" +\
+                    f"├Вернулся: {sending_info["info"]["Received"]}\n" +\
+                    f"├Причина: {sending_info["info"]["Status"]} /statuslist\n"
+                    f"└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1) == "0" else ping_status["Failed"]}",
+                    parse_mode="HTML"
+                )
 
 
         except FileNotFoundError:
@@ -261,88 +339,118 @@ async def update_modem(callback: CallbackQuery, state: FSMContext):
     elif action == "smsc":
         pass
 
+# ПИНГ СПИСОК НОМЕРОВ
+@router.message(F.text.startswith("модем"))
+async def modem_ping_menu(message: Message, state: FSMContext):
+    """Отправка ping-смс по списку номеров"""
+    if len(message.text) > 5:
+        phone_list = message.text.split("\n")[1:]
+        cleaned_phones = []
+        for phone in phone_list:
+            cleaned_phones.append(clean_phone_number(phone))
+        await state.update_data(phones=cleaned_phones)
+        info = f"📮 Модем\n├*Отправка на*:\n├{'\n├'.join(cleaned_phones)}\n└Подтвердите отправку"
+        await state.set_state(BotStatesStorage.list_phone)
+        await message.answer(
+            text=info,
+            reply_markup=kb.agree_send_modem(),
+        )
+    else:
+        await message.answer("Некорректный запрос")
 
-# @router.callback_query(F.data.startswith("forced_modem_ping__"))
-# async def forced_send_modem_ping(callback: CallbackQuery, state: FSMContext):
-#     if callback.from_user.id not in USERS_IDS:
-#         return callback.answer("Нет доступа")
+
+@router.callback_query(F.data == "agree_send_ping_modem")
+async def send_modem_phones(callback: CallbackQuery, state: FSMContext):
+    """Отправка смс по списку номеров"""
+    if callback.from_user.id not in USERS_IDS:
+        return callback.answer("Нет доступа")
     
-#     modem_id = callback.data.split("__")[1]
-#     loop = asyncio.get_event_loop()
-#     phone = await state.get_data()
-#     phone = phone["phone"]
-#     sending_info = await loop.run_in_executor(None, sms_center.send_sms, phone, modem_id)
-#     await callback.answer("❗Запрос на ping отправлен, ожидайте")
-#     await asyncio.sleep(10)
-#     try:
-#         await sending_info.update(await loop.run_in_executor(None, sms_center.get_message_id, sending_info["path_file"]))
-#     except TypeError:
-#         await callback.answer("‼ Продолжается попытка, ожидайте")
-#         try:
-#             await asyncio.sleep(8)
-#             await sending_info.update(await loop.run_in_executor(None, sms_center.get_message_id, sending_info["path_file"]))
-#         except TypeError:
-#             await callback.message.answer(f"📮 Модем\n├*Номер*: {phone}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору")
+    loop = asyncio.get_event_loop()
+    state_data = await state.get_data()
+    phones_info = state_data["phones"]
+    paths = {}
+    phones_states = ""
+    for phone in phones_info:
+        phone_data = numvox(phone)
+        if phone_data:
+            modem_id = 2 if phone_data["operator"].lower() in ["билайн", "beeline", "вымпелком"] else 1
+            # sending_info = send_sms(phone=phone, modem_id=modem_id)
+            sending_info = await loop.run_in_executor(None, send_sms, phone, modem_id)
+            paths[phone] = sending_info
+        elif phone_data is None:
+            sending_info = None
+        phones_states += f"├{phone} | {ping_status['Server_short'] if sending_info is not None else ping_status["Local_Failed"]}\n"
+    await state.update_data(paths=paths)
+    await state.set_state(BotStatesStorage.list_phone)
+    await callback.message.answer(
+        text="📮 Модем\n├Состояние:\n" +\
+            f"{phones_states}" +\
+            f"└Всего: {len(paths)}",
+        parse_mode="HTML"
+    )
+    phones_states = ""
+    await asyncio.sleep(WAIT_TIME)
+    for phone, sending_info in paths.items():
+        # sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
+        # sending_info.update(await loop.run_in_executor(None, check_sent_failed, "9994492792-Z0LcmI.txt")) # failed
+        sending_info.update(await loop.run_in_executor(None, check_sent_failed, "9994492792-lhWmON.txt")) # sent
+        phones_states += f"├{sending_info["info"]["To"]} | {ping_status[sending_info["status"]] if sending_info is not None else ping_status["Local_Failed"]}\n"
+    await callback.message.answer(
+        text="📮 Модем\n├Состояние:\n" +\
+            f"{phones_states}" +\
+            f"└Отправлено: {len(paths)}",
+        reply_markup=kb.update_status_list_modem(),
+        parse_mode="HTML"
+    )
+    await state.update_data(paths=paths)
 
+@router.callback_query(F.data == "update_status_ping__modem__list")
+async def update_modem_phones(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in USERS_IDS:
+        return callback.answer("Нет доступа")
 
+    loop = asyncio.get_event_loop()
 
+    phones_states = ""
 
-# @router.message(F.text.startswith("модем"))
-# async def modem_ping_menu(message: Message, state: FSMContext):
-#     if len(message.text) > 5:
-#         phone_list = message.text.split("\n")[1:]
-#         cleaned_phones = []
-#         for phone in phone_list:
-#             cleaned_phones.append(clean_phone_number(phone))
-#         await state.update_data(phones=cleaned_phones)
-#         info = f"📮 *МОДЕМ*\n\n📤 *Отправить на*\n{"\n".join(cleaned_phones)}\n\nПодтвердите отправку:"
-#         await state.set_state(BotStatesStorage.list_phone)
-#         await message.answer(
-#             text=info,
-#             reply_markup=kb.agree_send_modem(),
-#         )
-#     else:
-#         await message.answer("Некорректный запрос")
+    state_data = await state.get_data()
+    paths = state_data["paths"]
+    for phone, sending_info in paths.items():
+        message_id = sending_info["info"]["Message_id"]
+        modem_id = sending_info["info"]["Modem"][-1:]
+        sending_info.update(await loop.run_in_executor(None, check_report, message_id, modem_id))
+        if sending_info["status"] == "Report":
+            if sending_info["info"]["Status"].split(",", 1)[0] == "0":
+                phones_states += f"├{sending_info["info"]["From"]} | {ping_status[sending_info["status"]] if sending_info is not None else ping_status["Local_Failed"]}\n"
+            else:
+                phones_states += f"├{sending_info["info"]["From"]} | {ping_status["Undefined"] if sending_info is not None else ping_status["Local_Failed"]}\n"
+        elif sending_info["status"] == "Send":
+            phones_states += f"├{sending_info["info"]["To"]} | {ping_status[sending_info["status"]] if sending_info is not None else ping_status["Local_Failed"]}\n"
+    await state.update_data(paths=paths)
+    await callback.message.answer(
+        text="📮 Модем\n├Состояние:\n" +\
+            f"{phones_states}" +\
+            f"└Всего: {len(paths)}",
+        reply_markup=kb.update_status_list_modem(),
+        parse_mode="HTML"
+    )
 
-# @router.callback_query(F.data == "agree_send_modem")
-# async def send_modem_phones(callback: CallbackQuery, state: FSMContext):
-#     """Отправка смс по списку номеров"""
-#     if callback.from_user.id not in USERS_IDS:
-#         return callback.answer("Нет доступа")
+@router.callback_query(F.data == "get_ping_modem_list_reports")
+async def get_modem_list_reports(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in USERS_IDS:
+        return callback.answer("Нет доступа")
     
-#     state_data = await state.get_data()
-#     phones_info = state_data["phones"]
-#     paths = {}
-#     phones_states = ""
-#     for phone in phones_info:
-#         phone_data = numvox(phone)
-#         if phone_data:
-#             modem_id = 2 if phone_data["operator"].lower() in ["билайн", "beeline", "вымпелком"] else 1
-#             path = send_sms(phone=phone, modem_id=modem_id)
-#         else:
-#             path = send_sms(phone=phone, modem_id=1)
-#         paths[phone] = path
-#         phones_states += f"{phone} / {ping_status['Send']}\n"
-#     await state.update_data(paths=paths)
-#     await state.set_state(BotStatesStorage.list_phone)
-#     await callback.message.answer(
-#         text="▶️📮*МОДЕМ*\n\n📥 *Состояние*\n\n" +\
-#             "*Номер / Статус*\n" +\
-#             f"{phones_states}",
-#         reply_markup=kb.update_status_list_modem()
-#     )
-
-# @router.callback_query(F.data == "update_status_list_modem")
-# async def update_modem_phones(callback: CallbackQuery, state: FSMContext):
-#     if callback.from_user.id not in USERS_IDS:
-#         return callback.answer("Нет доступа")
-    
-#     state_data = await state.get_data()
-#     paths = state_data["paths"]
-#     for phone, phone_data in paths.items():
-#         paths[phone].update(get_message_id(phone_data["path_file"]))
+    loop = asyncio.get_event_loop()
+    state_data = await state.get_data()
+    paths = state_data["paths"]
+    report_path = await loop.run_in_executor(None, give_report_content, paths)
+    await callback.message.answer_document(
+        document=FSInputFile(path=report_path, filename="отчет.csv"))
 
 
+
+
+# ПОЛУЧИТЬ HELP
 @router.message(Command("help"))
 async def get_help(message: Message):
     """Возвращает справку по функциям бота
@@ -354,13 +462,33 @@ async def get_help(message: Message):
         help_text = f.read()
         await message.answer(help_text)
 
-
+# ПОЛУЧИТЬ ID
 @router.message(Command("id"))
 async def cmd_get_id(message: Message):
     """Возвращает id телеграм аккаунта юзера
     """
     await message.answer(f"Твой Telegram ID: `{message.from_user.id}`")
 
+# ПОЛУЧИТЬ СПИСОК СТАТУСОВ РЕПОРТОВ
+@router.message(Command("statuslist"))
+async def get_status_list(message:Message):
+    with open("source/texts/modem_status.txt", "r", encoding="utf-8") as f:
+        await message.answer(
+            text=f.read(),
+            parse_mode="HTML"
+            )
+
+@router.message(Command("balance"))
+async def cmd_balance(message: Message):
+    if message.from_user.id not in USERS_IDS:
+        return message.answer("Нет доступа")
+    
+    await message.answer(
+        f"Привет, {SMSC_LOGIN}!\nБаланс SMSC: <b>{get_balance()} руб</b>",
+        parse_mode="HTML",
+    )
+
+# ЗАГЛУШКА ДЛЯ ЛЕВЫХ ЗАПРОСОВ
 @router.message(F.text.regexp(r"."))
 async def try_again(message: Message):
     """Заглушка от 'левых' запросов"""

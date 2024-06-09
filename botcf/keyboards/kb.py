@@ -20,8 +20,8 @@ def phone_menu_kb(phone: int):
 def phone_menu_kb_world(phone: int):
     phone_menu_but = [
         [
-            InlineKeyboardButton(text="📮🔴 Модем [МТС]", callback_data="forced__ping_modem_forced__1"),
-            InlineKeyboardButton(text="📮🟡 Модем [Билайн]", callback_data="forced__ping_modem_forced__2"),
+            InlineKeyboardButton(text="📮🔴 Модем [МТС]", callback_data="forced_ping_modem__1"),
+            InlineKeyboardButton(text="📮🟡 Модем [Билайн]", callback_data="forced_ping_modem__2"),
         ],
         [
             InlineKeyboardButton(text="🟢 WhatsApp", url=f"https://wa.me/+{phone}"),
@@ -47,7 +47,10 @@ def agree_send_modem():
 def update_status_list_modem():
     modem_menu = [
         [
-        InlineKeyboardButton(text="🔄 Обновить", callback_data="update_status_ping__modem__list")
+            InlineKeyboardButton(text="🔄 Обновить", callback_data="update_status_ping__modem__list"),
+        ],
+        [
+            InlineKeyboardButton(text="📒 Отчет", callback_data="get_ping_modem_list_reports"),
         ]
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=modem_menu)
@@ -56,7 +59,7 @@ def update_status_list_modem():
 def update_status_smsc():
     smsc_menu = [
         [
-            InlineKeyboardButton(text="🔄 Обновить", callback_data="update_status_ping__smsc__alone")
+            InlineKeyboardButton(text="🔄 Обновить", callback_data="update_status_ping_alone__smsc__alone")
         ]
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=smsc_menu)
@@ -65,7 +68,7 @@ def update_status_smsc():
 def update_status_modem():
     modem_menu = [
         [
-            InlineKeyboardButton(text="🔄 Обновить", callback_data="update_status_ping__modem__alone")
+            InlineKeyboardButton(text="🔄 Обновить", callback_data="update_status_ping_alone__modem__alone")
         ]
     ]
     keyboard = InlineKeyboardMarkup(inline_keyboard=modem_menu)

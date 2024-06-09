@@ -5,6 +5,7 @@ import os.path
 import random
 import string
 from .smsc_api import SMSC
+import pandas as pd
 
 
 def send_sms(phone: int, modem_id=1, send_mode=True) -> str:
@@ -94,13 +95,26 @@ def check_report(message_id: str, modem_id: str) -> dict:
                     }
 
 
-def give_report_content(path_file: str) -> str:
-    """
-    Принимает путь к файлу
-    Возвращает содержимое файла
-    """
-    with open(path_file, "r", encoding="utf-8") as f:
-        return f.read()
+def give_report_content(x: dict) -> str:
+    y = {}
+    for key in x:
+        y[key] = {}
+        for k, v in x[key].items():
+            if k == 'info':
+                y[key][k] = {}
+                for info_key, info_value in v.items():
+                    y[key][k][info_key] = info_value
+            else:
+                y[key][k] = v
+
+    for key, value in y.items():
+        if isinstance(value.get('info', {}), dict):
+            y[key].update(value.pop('info'))
+
+    df = pd.DataFrame(y)
+    file_path = f"source/reports/output-{''.join(random.choice(string.digits + string.ascii_lowercase + string.ascii_uppercase) for x in range(3))}.csv"
+    df.to_csv(file_path)
+    return file_path
 
 
 # Функционал SMSC

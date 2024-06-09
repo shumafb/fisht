@@ -17,6 +17,9 @@ with open("source/keys.json", "r", encoding="utf-8") as f:
 with open("source/members.json", "r", encoding="utf-8") as f:
     USERS_IDS = json.load(f)["users"]
 
+# Время ожидания перед проверкой Sent/Failed
+WAIT_TIME = 5
+
 # Логирование бота
 logging.basicConfig(
     level=logging.INFO,

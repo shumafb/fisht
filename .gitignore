@@ -7,3 +7,5 @@
 logs
 .coverage
 htmlcov
+/source/bs_maps
+/source/reports
