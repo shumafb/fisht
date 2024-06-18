@@ -17,11 +17,11 @@ def send_sms(phone: int, modem_id=1, send_mode=True) -> str:
                 False - строгий режим для ин. номеров
     Возвращает название созданного файла
     """
-    path_file = f"sms/outgoing/{modem_id}/{phone}-{''.join(random.choice(string.digits + string.ascii_lowercase + string.ascii_uppercase) for x in range(6))}.txt"
+    path_file = f"/home/user/smscenter/sms/outgoing/{modem_id}/{phone}-{''.join(random.choice(string.digits + string.ascii_lowercase + string.ascii_uppercase) for x in range(6))}.txt"
     with open(path_file, "w", encoding="utf-8") as file:
         x = f"To: {phone}\n"
         x += "Report: yes\n"
-        x += "Ping: yes\n\n"
+        x += "Ping: yes\n\n "
         file.write(x)
     return {"path_file": path_file[path_file.find("/outgoing/") + 12 :]}
 
@@ -34,20 +34,20 @@ def check_sent_failed(path_file: str) -> dict:
     """
     try:
         info = {}
-        if os.path.isfile(f"sms/sent/{path_file}"):
-            with open(f"sms/sent/{path_file}", "r", encoding="utf-8") as file:
+        if os.path.isfile(f"/home/user/smscenter/sms/sent/{path_file}"):
+            with open(f"/home/user/smscenter/sms/sent/{path_file}", "r", encoding="utf-8") as file:
                 lines = file.readlines()
                 for line in lines:
                     if len(line.split(":", 1)) > 1:
                         info[line.strip("\n").split(":", 1)[0]] = line.strip("\n").split(":", 1)[1].strip()
-            return {"status": "Send", "info": info, "path_file": f"sms/sent/{path_file}"}
-        if os.path.isfile(f"sms/failed/{path_file}"):
-            with open(f"sms/failed/{path_file}", "r", encoding="utf-8") as file:
+            return {"status": "Send", "info": info, "path_file": f"/home/user/smscenter/sms/sent/{path_file}"}
+        if os.path.isfile(f"home/user/smscenter/sms/failed/{path_file}"):
+            with open(f"home/user/smscenter/sms/failed/{path_file}", "r", encoding="utf-8") as file:
                 lines = file.readlines()
                 for line in lines:
                     if len(line.split(":", 1)) > 1:
                         info[line.strip("\n").split(":", 1)[0]] = line.strip("\n").split(":", 1)[1].strip()
-            return {"status": "Local_Failed", "info": info, "path_file": f"sms/failed/{path_file}"}
+            return {"status": "Local_Failed", "info": info, "path_file": f"home/user/smscenter/sms/failed/{path_file}"}
     except FileNotFoundError:
         pass
     else:
@@ -60,7 +60,7 @@ def get_message_id(path_file: str) -> dict:
     path_file - название отчета о запросе отпраки смс
     """
     try:
-        with open(f"sms/sent/{path_file}", "r", encoding="utf-8") as file:
+        with open(f"home/user/smscenter/sms/sent/{path_file}", "r", encoding="utf-8") as file:
             lines = file.readlines()
             for line in lines:
                 if "Message_id" in line:
@@ -79,9 +79,9 @@ def check_report(message_id: str, modem_id: str) -> dict:
     modem_id - id модема
     Возвращает словарь с данными отчета
     """
-    for filename in os.listdir("sms/report"):
+    for filename in os.listdir("/home/user/smscenter/sms/report"):
         if filename.startswith(f"GSM{modem_id}"):
-            with open(f"sms/report/{filename}", "r", encoding="utf-8") as f:
+            with open(f"/home/user/smscenter/sms/report/{filename}", "r", encoding="utf-8") as f:
                 info = {}
                 for line in f.readlines():
                     if len(line.strip().split(": ")[1:]) > 0:
@@ -91,9 +91,10 @@ def check_report(message_id: str, modem_id: str) -> dict:
                     return {
                         "status": "Report",
                         "info": info,
-                        "path_file": f"sms/report/{filename}",
+                        "path_file": f"home/user/smscenter/sms/report/{filename}",
                     }
-
+                else:
+                    pass
 
 def give_report_content(x: dict) -> str:
     y = {}

@@ -98,16 +98,17 @@ async def imei_menu(message: Message):
     tac_info = check_taclist(tac_code=tac)
     info = ""
     if imei_info is not None:
-        imei_device = f"{imei_info["object"]["brand"]} {imei_info["object"]["name"]}"
+        imei_device = f"{imei_info['object']['brand']} {imei_info['object']['name']}"
         if imei_info["object"]["image"] is not None:
             image = URLInputFile(imei_info["object"]["image"])
             await message.answer_photo(image)
-        info += f"🆔\n*├IMEI*: {imei}\n└Модель: {imei_device}\n"
+        info += f"🆔\n<b>├IMEI</b>: {imei}\n└Модель: {imei_device}\n"
     if tac_info is not None:
-        info += f"\n🆑\n*├TAC*: {tac}\n└Модель: {tac_info}"
+        info += f"\n🆑\n<b>├TAC</b>: {tac}\n└Модель: {tac_info}"
     await message.answer(
         text=info,
-        reply_markup=kb.imei_keyboard(imei_device=imei_device, imei=imei))
+        reply_markup=kb.imei_keyboard(imei_device=imei_device, imei=imei),
+        parse_mode="HTML")
 
 # АБОНЕНТСКИЙ НОМЕР
 @router.message(F.text.regexp(r"(?:([+]\d{1,4})[-.\s]?)?(?:[(](\d{1,3})[)][-.\s]?)?(\d{1,4})[-.\s]?(\d{1,4})[-.\s]?(\d{1,9})"))
@@ -146,7 +147,7 @@ async def phone_menu(message: Message, state: FSMContext):
                 sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
                 await state.update_data(sending_info=sending_info)
                 await message.answer(
-                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n└Статус: {ping_status[sending_info["status"]]}",
+                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info['info']['To']}\n├Отправлен: {sending_info['info']['Sent']}\n└Статус: {ping_status[sending_info['status']]}",
                     reply_markup=kb.update_status_modem(),
                     parse_mode="HTML"
                 )
@@ -279,6 +280,7 @@ async def forced_send_modem_ping(callback: CallbackQuery, state: FSMContext):
         await asyncio.sleep(WAIT_TIME)
         sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
         await state.update_data(sending_info=sending_info)
+        print(sending_info)
         await callback.message.answer(
             text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n└Статус: {ping_status[sending_info["status"]]}",
             reply_markup=kb.update_status_modem(),
@@ -286,6 +288,7 @@ async def forced_send_modem_ping(callback: CallbackQuery, state: FSMContext):
         )
     except (TypeError, KeyError):
         if sending_info["info"] is not None:
+            print(sending_info)
             await callback.message.answer(
                 text=f"📮 Модем\n<b>├Номер</b>: {sending_info["info"]["To"]}\n├Время ошибки: {sending_info['info']["Failed"]}\n├Причина: {sending_info["info"]["Fail_reason"]}\n└Статус: {ping_status['Local_Failed']}\n\nОбратитесь к администратору",
                 parse_mode="HTML")
@@ -310,25 +313,36 @@ async def update_modem(callback: CallbackQuery, state: FSMContext):
 
     message_id = sending_info["info"]["Message_id"]
     modem_id = sending_info["info"]["Modem"][-1:]
+    print(sending_info, "update but")
+    print(message_id, modem_id)
+    print(action, amount)
 
     if action == "modem" and amount == "alone":
         try:
-            sending_info.update(await loop.run_in_executor(None, check_report, message_id, modem_id))
-            if sending_info["info"]["Status"].split(",", 1)[0] == "0":
+            updating_info = await loop.run_in_executor(None, check_report, message_id, modem_id)
+            if updating_info is not None:
+                sending_info.update(updating_info)
+            try:
+                if sending_info["info"]["Status"].split(",", 1)[0] == "0":
+                    await callback.message.answer(
+                        text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["From"]}\n├Отправлен: {sending_info["info"]['Sent']}\n├Вернулся: {sending_info["info"]["Received"]}\n└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1)[0] == "0" else ping_status["Failed"]}",
+                        parse_mode="HTML"
+                    )
+                else:
+                    await callback.message.answer(
+                        text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["From"]}\n" +\
+                        f"├Отправлен: {sending_info["info"]['Sent']}\n" +\
+                        f"├Вернулся: {sending_info["info"]["Received"]}\n" +\
+                        f"├Причина: {sending_info["info"]["Status"]} /statuslist\n"
+                        f"└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1) == "0" else ping_status["Failed"]}",
+                        parse_mode="HTML"
+                    )
+            except KeyError:
                 await callback.message.answer(
-                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["From"]}\n├Отправлен: {sending_info["info"]['Sent']}\n├Вернулся: {sending_info["info"]["Received"]}\n└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1)[0] == "0" else ping_status["Undefined"]}",
+                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["To"]}\n├Отправлен: {sending_info["info"]['Sent']}\n└Статус: {ping_status[sending_info["status"]]}",
+                    reply_markup=kb.update_status_modem(),
                     parse_mode="HTML"
                 )
-            else:
-                await callback.message.answer(
-                    text=f"📮 Модем\n├<b>Номер</b>: {sending_info["info"]["From"]}\n" +\
-                    f"├Отправлен: {sending_info["info"]['Sent']}\n" +\
-                    f"├Вернулся: {sending_info["info"]["Received"]}\n" +\
-                    f"├Причина: {sending_info["info"]["Status"]} /statuslist\n"
-                    f"└Статус: {ping_status[sending_info["status"]] if sending_info["info"]["Status"].split(",", 1) == "0" else ping_status["Failed"]}",
-                    parse_mode="HTML"
-                )
-
 
         except FileNotFoundError:
             await callback.message.answer(
@@ -391,9 +405,9 @@ async def send_modem_phones(callback: CallbackQuery, state: FSMContext):
     phones_states = ""
     await asyncio.sleep(WAIT_TIME)
     for phone, sending_info in paths.items():
-        # sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
+        sending_info.update(await loop.run_in_executor(None, check_sent_failed, sending_info["path_file"]))
         # sending_info.update(await loop.run_in_executor(None, check_sent_failed, "9994492792-Z0LcmI.txt")) # failed
-        sending_info.update(await loop.run_in_executor(None, check_sent_failed, "9994492792-lhWmON.txt")) # sent
+        # sending_info.update(await loop.run_in_executor(None, check_sent_failed, "9994492792-lhWmON.txt")) # sent
         phones_states += f"├{sending_info["info"]["To"]} | {ping_status[sending_info["status"]] if sending_info is not None else ping_status["Local_Failed"]}\n"
     await callback.message.answer(
         text="📮 Модем\n├Состояние:\n" +\
@@ -418,7 +432,9 @@ async def update_modem_phones(callback: CallbackQuery, state: FSMContext):
     for phone, sending_info in paths.items():
         message_id = sending_info["info"]["Message_id"]
         modem_id = sending_info["info"]["Modem"][-1:]
-        sending_info.update(await loop.run_in_executor(None, check_report, message_id, modem_id))
+        updating_info = await loop.run_in_executor(None, check_report, message_id, modem_id)
+        if updating_info is not None:
+            sending_info.update(updating_info)
         if sending_info["status"] == "Report":
             if sending_info["info"]["Status"].split(",", 1)[0] == "0":
                 phones_states += f"├{sending_info["info"]["From"]} | {ping_status[sending_info["status"]] if sending_info is not None else ping_status["Local_Failed"]}\n"
