@@ -2,7 +2,18 @@ from bs4 import BeautifulSoup
 import random
 import string
 
-operators = {"1": "red", "2": "green", "20": "black", "99": "yellow"}
+operators = {"1": "red",
+             "2": "green",
+             "20": "black",
+             "99": "yellow",
+             '32': 'white',
+             '62': 'lightblue',
+             '60': 'white',
+             '34': 'white',
+             '33': 'white'}
+
+62|32|60|34|33
+
 
 def bs_html_constructor(bs_list: list) -> str:
     """

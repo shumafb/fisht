@@ -50,7 +50,7 @@ class BotStatesStorage(StatesGroup):
     list_phone = State() # Состояние списка номеров
 
 # БАЗОВЫЕ СТАНЦИИ
-@router.message(F.text.regexp(r"^(1|2|20|99) (\d{1,8}) (\d+)"))
+@router.message(F.text.regexp(r"^(1|2|20|99|62|32|60|34|33) (\d{1,8}) (\d+)"))
 async def api_locator(message: Message):
     """Работа с базовыми станциями, возвращает превью, html-файл, статус ответов по API
     """
@@ -465,6 +465,16 @@ async def get_modem_list_reports(callback: CallbackQuery, state: FSMContext):
 
 
 
+# Получить ДОМОФОНЫ
+@router.message(Command("door"))
+async def get_doorcodes(message: Message):
+    '''Возвращает коды домофонов в html'''
+    if message.from_user.id not in USERS_IDS:
+        return message.answer("Нет доступа")
+    
+    await message.answer_document(
+        document=FSInputFile(path="source/doorcodes.html",
+                             filename="doorcodes.html"))   
 
 # ПОЛУЧИТЬ HELP
 @router.message(Command("help"))

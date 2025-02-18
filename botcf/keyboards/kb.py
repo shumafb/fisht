@@ -7,8 +7,8 @@ def phone_menu_kb(phone: int):
             InlineKeyboardButton(text="📮 Модем", callback_data="ping_modem"),
         ],
         [
-            InlineKeyboardButton(text="🟢 WhatsApp", url=f"https://wa.me/+7{phone}"),
-            InlineKeyboardButton(text="🔵 Telegram", url=f"https://t.me/+7{phone}"),
+            InlineKeyboardButton(text="🟢 WhatsApp", url=f"https://wa.me/+{phone}"),
+            InlineKeyboardButton(text="🔵 Telegram", url=f"https://t.me/+{phone}"),
         ],
         [
             InlineKeyboardButton(text="🔴 Yandex", url=f"https://ya.ru/search/?text={phone}")
